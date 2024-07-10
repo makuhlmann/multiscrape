@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.10.34916.146
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "multiscrape", "multiscrape.csproj", "{B0308954-3C48-44DE-8ACC-81B2EB81815A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B0308954-3C48-44DE-8ACC-81B2EB81815A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B0308954-3C48-44DE-8ACC-81B2EB81815A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B0308954-3C48-44DE-8ACC-81B2EB81815A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B0308954-3C48-44DE-8ACC-81B2EB81815A}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {2139EDB6-92E6-48DA-979A-5ED337A21A61}
+	EndGlobalSection
+EndGlobal
