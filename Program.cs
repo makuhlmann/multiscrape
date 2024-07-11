@@ -57,7 +57,8 @@ namespace multiscrape {
 
         static void DownloadList(string[] urls) {
             foreach (string url in urls) {
-                Download(url);
+                if (!url.StartsWith("#"))
+                    Download(url);
             }
         }
 
@@ -133,6 +134,9 @@ namespace multiscrape {
             Uri uri = new Uri(origurl);
             string path = uri.Host + String.Join("", uri.Segments.Take(uri.Segments.Length - 1)).Replace("://", "/");
             string filePath = uri.Host + (dirStruct ? String.Join("", uri.Segments) : uri.Segments.Last()).Replace("://", "/");
+
+            while (filePath.EndsWith("/"))
+                filePath = filePath.Substring(0, filePath.Length - 1);
 
             if (File.Exists(filePath)) {
                 Log("File already downloaded, skipping");
