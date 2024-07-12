@@ -3,19 +3,19 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Net.Http;
 using System.Web;
 
 namespace multiscrape {
     internal class Program {
         static bool skipWayback = false;
         static bool skipDirect = false;
-        static bool dirStruct = true;
-        static List<string> patterns = new List<string>();
-        static WebClient webClient = new WebClient();
-        static string minTimestamp = "19950101120000";
-        static DateTime starTime = DateTime.Now;
-        static List<string> downloadLists = new List<string>();
+        static readonly bool dirStruct = true;
+        static readonly List<string> patterns = new List<string>();
+        static readonly WebClient webClient = new WebClient();
+        //static string minTimestamp = "19950101120000";
+        static readonly string startTime = DateTime.Now.ToString("yyyyMMddhhmmss");
+        static string currentFile = "";
+        static readonly List<string> downloadLists = new List<string>();
 
         static void Main(string[] args) {
             for (int i = 0; i < args.Length; i++) {
@@ -50,8 +50,8 @@ namespace multiscrape {
                     }
                 }
             }
-
             foreach (var path in downloadLists) {
+                currentFile = path;
                 DownloadList(File.ReadLines(path).ToArray());
             }
         }
@@ -73,7 +73,7 @@ namespace multiscrape {
                 Log($"Downloading {url} [direct]");
                 if (DownloadFile(url)) {
                     Log("Download completed.");
-                    File.AppendAllLines($"mslog_ok_{starTime.ToString("yyyyMMddhhmmss")}.txt", new string[] { url });
+                    File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { url });
                     return;
                 }
             }
@@ -89,7 +89,7 @@ namespace multiscrape {
                                             .Replace("%q", uri.Query);
                 if (DownloadFile(replacedUrl, url)) {
                     Log("Download completed.");
-                    File.AppendAllLines($"mslog_ok_{starTime.ToString("yyyyMMddhhmmss")}.txt", new string[] { url });
+                    File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { url });
                     continue;
                 }
             }
@@ -97,7 +97,7 @@ namespace multiscrape {
             // Step 3 - Wayback
             if (!skipWayback) {
                 Log($"Downloading {url} [wayback]");
-                string timestamp = minTimestamp;
+                string timestamp;
                 string waybackApiResponse = DownloadString($"http://web.archive.org/cdx/search/cdx?fl=statuscode,timestamp&filter=statuscode:[23]{{1}}0[02]&url={HttpUtility.UrlEncode(url)}");
 
                 foreach (var line in waybackApiResponse.Split('\n')) {
@@ -107,7 +107,7 @@ namespace multiscrape {
 
                     if (DownloadFile($"http://web.archive.org/web/{timestamp}id_/{url}", url)) {
                         Log("Download completed.");
-                        File.AppendAllLines($"mslog_ok_{starTime.ToString("yyyyMMddhhmmss")}.txt", new string[] { url });
+                        File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { url });
                         return;
                     }
                 }
@@ -115,7 +115,7 @@ namespace multiscrape {
 
             // Fail
             Log("Failed to download file via all available methods.");
-            File.AppendAllLines($"mslog_err_{starTime.ToString("yyyyMMddhhmmss")}.txt", new string[] { url });
+            File.AppendAllLines($"mslog_err_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { url });
         }
 
         static string DownloadString(string url) {
@@ -128,17 +128,17 @@ namespace multiscrape {
         }
 
         static void Log(string message) {
-            File.AppendAllLines($"mslog_{starTime.ToString("yyyyMMddhhmmss")}.txt", new string[] { message });
+            File.AppendAllLines($"mslog_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { message });
             Console.WriteLine(message);
         }
 
         static bool DownloadFile(string url, string origurl = "") {
-            if (origurl == "")
+            if (origurl?.Length == 0)
                 origurl = url;
 
             Uri uri = new Uri(origurl);
-            string path = uri.Host + String.Join("", uri.Segments.Take(uri.Segments.Length - 1)).Replace("://", "/");
-            string filePath = uri.Host + (dirStruct ? String.Join("", uri.Segments) : uri.Segments.Last()).Replace("://", "/");
+            string path = uri.Host + String.Concat(uri.Segments.Take(uri.Segments.Length - 1)).Replace("://", "/");
+            string filePath = uri.Host + (dirStruct ? String.Concat(uri.Segments) : uri.Segments.Last()).Replace("://", "/");
 
             while (filePath.EndsWith("/"))
                 filePath = filePath.Substring(0, filePath.Length - 1);
@@ -159,7 +159,6 @@ namespace multiscrape {
                 webClient.DownloadFile(url, filePath + ".dltemp");
 
                 File.Move(filePath + ".dltemp", filePath);
-
             } catch (WebException we) {
                 Log($"Download failed: {we.Message}");
 
