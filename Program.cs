@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Web;
 
 namespace multiscrape {
@@ -142,26 +143,28 @@ namespace multiscrape {
             while (filePath.EndsWith("/"))
                 filePath = filePath.Substring(0, filePath.Length - 1);
 
+            if (File.Exists(filePath + ".dltemp")) {
+                Log("Found interrupted download, removed");
+            }
+
             if (File.Exists(filePath)) {
                 Log("File already downloaded, skipping");
                 return true;
             }
 
             try {
-                byte[] result = webClient.DownloadData(url);
-
                 if (dirStruct && !Directory.Exists(path))
                     Directory.CreateDirectory(path);
 
-                using (FileStream fs = File.OpenWrite(filePath)) {
-                    fs.Write(result, 0, result.Length);
-                }
+                webClient.DownloadFile(url, filePath + ".dltemp");
+
+                File.Move(filePath + ".dltemp", filePath);
 
             } catch (WebException we) {
                 Log($"Download failed: {we.Message}");
 
-                if (File.Exists(filePath))
-                    File.Delete(filePath);
+                if (File.Exists(filePath + ".dltemp"))
+                    File.Delete(filePath + ".dltemp");
 
                 return false;
             }
