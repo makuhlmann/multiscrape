@@ -57,8 +57,12 @@ namespace multiscrape {
 
         static void DownloadList(string[] urls) {
             foreach (string url in urls) {
-                if (!url.StartsWith("#"))
+                if (url.StartsWith("#") || string.IsNullOrWhiteSpace(url))
+                    continue;
+                if (url.Contains("://"))
                     Download(url);
+                else
+                    Download("http://" + url);
             }
         }
 
