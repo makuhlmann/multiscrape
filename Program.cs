@@ -65,7 +65,7 @@ namespace multiscrape {
         static void DownloadList() {
             // Step 1 - Direct
             if (!skipDirect) {
-                foreach (string url in currentList) {
+                foreach (string url in currentList.ToArray()) {
                     if (url.StartsWith("#") || string.IsNullOrWhiteSpace(url))
                         continue;
                     if (url.Contains("://"))
@@ -77,7 +77,7 @@ namespace multiscrape {
 
             // Step 2 - Pattern
             if (patterns.Count > 0 && currentList.Count > 0) {
-                foreach (string url in currentList) {
+                foreach (string url in currentList.ToArray()) {
                     if (url.StartsWith("#") || string.IsNullOrWhiteSpace(url))
                         continue;
                     if (url.Contains("://"))
@@ -89,7 +89,7 @@ namespace multiscrape {
 
             // Step 3 - Wayback
             if (!skipWayback && currentList.Count > 0) {
-                foreach (string url in currentList) {
+                foreach (string url in currentList.ToArray()) {
                     if (url.StartsWith("#") || string.IsNullOrWhiteSpace(url))
                         continue;
                     if (url.Contains("://"))
