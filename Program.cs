@@ -136,11 +136,11 @@ namespace multiscrape {
             if (origurl?.Length == 0)
                 origurl = url;
 
-            Uri uri = new Uri(origurl);
+            Uri uri = new Uri(HttpUtility.UrlDecode(origurl));
             string path = uri.Host + String.Concat(uri.Segments.Take(uri.Segments.Length - 1)).Replace("://", "/");
             string filePath = uri.Host + (dirStruct ? String.Concat(uri.Segments) : uri.Segments.Last()).Replace("://", "/");
 
-            while (filePath.EndsWith("/"))
+            while (filePath.EndsWith("/") || filePath.EndsWith(".") || filePath.EndsWith("?") || filePath.EndsWith("#") || filePath.EndsWith(" "))
                 filePath = filePath.Substring(0, filePath.Length - 1);
 
             if (File.Exists(filePath + ".dltemp")) {
