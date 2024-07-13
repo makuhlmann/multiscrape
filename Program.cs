@@ -111,7 +111,8 @@ namespace multiscrape {
         static void DownloadDirect(string url) {
             // Step 1 - Direct
             Log($"Downloading {url} [direct]");
-            if (DownloadFile(url)) {
+            string filePath = PrepareDownloadDestination(url);
+            if (filePath != null && DownloadFile(url, filePath)) {
                 Log("Download completed.");
                 File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { $"d|{url}" });
                 currentList.Remove(url);
@@ -129,7 +130,9 @@ namespace multiscrape {
                                             .Replace("%h", uri.Host)
                                             .Replace("%p", uri.AbsolutePath)
                                             .Replace("%q", uri.Query);
-                if (DownloadFile(replacedUrl, url)) {
+                string filePath = PrepareDownloadDestination(url);
+
+                if (filePath != null && DownloadFile(replacedUrl, filePath)) {
                     Log("Download completed.");
                     File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { $"p{i}|{url}" });
                     currentList.Remove(url);
@@ -142,6 +145,11 @@ namespace multiscrape {
             // Step 3 - Wayback
             Log($"Downloading {url} [wayback]");
             string timestamp;
+
+            string filePath = PrepareDownloadDestination(url);
+            if (filePath == null)
+                return;
+
             string waybackApiResponse = DownloadString($"http://web.archive.org/cdx/search/cdx?fl=statuscode,timestamp&filter=statuscode:[23]{{1}}0[02]&url={HttpUtility.UrlEncode(url)}");
 
             foreach (var line in waybackApiResponse.Split('\n')) {
@@ -149,7 +157,7 @@ namespace multiscrape {
                     continue;
                 timestamp = line.Split(' ')[1];
 
-                if (DownloadFile($"http://web.archive.org/web/{timestamp}id_/{url}", url)) {
+                if (DownloadFile($"http://web.archive.org/web/{timestamp}id_/{url}", filePath)) {
                     Log("Download completed.");
                     File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { $"w|{url}" });
                     currentList.Remove(url);
@@ -180,37 +188,44 @@ namespace multiscrape {
             Console.WriteLine(message);
         }
 
-        static bool DownloadFile(string url, string origurl = "") {
-            if (origurl?.Length == 0)
-                origurl = url;
-
+        static string PrepareDownloadDestination(string origurl) {
             Uri uri = new Uri(HttpUtility.UrlDecode(origurl));
             string path = uri.Host + String.Concat(uri.Segments.Take(uri.Segments.Length - 1)).Replace("://", "/").Replace("%20", " ");
             string filePath = uri.Host + String.Concat(uri.Segments).Replace("://", "/").Replace("%20", " ");
 
             while (path.Contains(" /"))
-                path.Replace(" /", "/");
+                path = path.Replace(" /", "/");
             while (filePath.Contains(" /"))
-                filePath.Replace(" /", "/");
+                filePath = filePath.Replace(" /", "/");
 
             while (filePath.EndsWith("/") || filePath.EndsWith(".") || filePath.EndsWith("?") || filePath.EndsWith("#") || filePath.EndsWith(" "))
                 filePath = filePath.Substring(0, filePath.Length - 1);
 
-            if (File.Exists(filePath + ".dltemp")) {
-                Log("Found interrupted download, removed");
-            }
-
             if (File.Exists(filePath)) {
                 Log("File already downloaded, skipping");
-                return true;
+                File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { $"x|{origurl}" });
+                currentList.Remove(origurl);
+                return null;
             }
 
             try {
-                if (dirStruct && !Directory.Exists(path))
+                if (File.Exists(filePath + ".dltemp")) {
+                    Log("Found interrupted download, removed");
+                    File.Delete(filePath + ".dltemp");
+                }
+
+                if (!Directory.Exists(path))
                     Directory.CreateDirectory(path);
+            } catch (Exception ex) {
+                Log("Error preparing destination: " + ex.Message);
+            }
 
+            return filePath;
+        }
+
+        static bool DownloadFile(string url, string filePath) {
+            try {
                 webClient.DownloadFile(url, filePath + ".dltemp");
-
                 File.Move(filePath + ".dltemp", filePath);
             } catch (WebException we) {
                 Log($"Download failed: {we.Message}");
@@ -222,7 +237,7 @@ namespace multiscrape {
                     Log("Sleeping 60 seconds -> Wayback cooldown");
                     Thread.Sleep(60000);
                     Log("Retrying...");
-                    return DownloadFile(url, origurl);
+                    return DownloadFile(url, filePath);
                 }
 
                 return false;
