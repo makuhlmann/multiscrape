@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Security.Policy;
+using System.Threading;
 using System.Web;
 
 namespace multiscrape {
@@ -17,6 +19,8 @@ namespace multiscrape {
         static string currentFile = "";
         static readonly List<string> downloadLists = new List<string>();
 
+        static List<string> currentList = new List<string>();
+
         static void Main(string[] args) {
             for (int i = 0; i < args.Length; i++) {
                 string path = args[i];
@@ -24,14 +28,14 @@ namespace multiscrape {
                     switch (path.Substring(1, 1)) {
                         case "w":
                             skipWayback = true;
-                            break;
+                            continue;
                         case "d":
                             skipDirect = true;
-                            break;
+                            continue;
                         case "p":
                             patterns.Add(args[i + 1]);
                             i++;
-                            break;
+                            continue;
                         case "?":
                             Console.WriteLine("Multiscrape Usage: multiscrape [/options] path1 [path2] [path3] ...\n\n" +
                             "/w - Skip Wayback Machine scraping\n" +
@@ -52,32 +56,70 @@ namespace multiscrape {
             }
             foreach (var path in downloadLists) {
                 currentFile = path;
-                DownloadList(File.ReadLines(path).ToArray());
+                currentList = new List<string>();
+                currentList.AddRange(File.ReadLines(path));
+                DownloadList();
             }
         }
 
-        static void DownloadList(string[] urls) {
-            foreach (string url in urls) {
-                if (url.StartsWith("#") || string.IsNullOrWhiteSpace(url))
-                    continue;
-                if (url.Contains("://"))
-                    Download(url);
-                else
-                    Download("http://" + url);
-            }
-        }
-
-        static void Download(string url) {
+        static void DownloadList() {
             // Step 1 - Direct
             if (!skipDirect) {
-                Log($"Downloading {url} [direct]");
-                if (DownloadFile(url)) {
-                    Log("Download completed.");
-                    File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { url });
-                    return;
+                foreach (string url in currentList) {
+                    if (url.StartsWith("#") || string.IsNullOrWhiteSpace(url))
+                        continue;
+                    if (url.Contains("://"))
+                        DownloadDirect(url);
+                    else
+                        DownloadDirect("http://" + url);
                 }
             }
 
+            // Step 2 - Pattern
+            if (patterns.Count > 0 && currentList.Count > 0) {
+                foreach (string url in currentList) {
+                    if (url.StartsWith("#") || string.IsNullOrWhiteSpace(url))
+                        continue;
+                    if (url.Contains("://"))
+                        DownloadPattern(url);
+                    else
+                        DownloadPattern("http://" + url);
+                }
+            }
+
+            // Step 3 - Wayback
+            if (!skipWayback && currentList.Count > 0) {
+                foreach (string url in currentList) {
+                    if (url.StartsWith("#") || string.IsNullOrWhiteSpace(url))
+                        continue;
+                    if (url.Contains("://"))
+                        DownloadWayback(url);
+                    else
+                        DownloadWayback("http://" + url);
+                }
+            }
+
+            // Fail
+            if (currentList.Count > 0) {
+                Log($"Failed to download {currentList.Count} files via all available methods.");
+                foreach (var url in currentList) {
+                    File.AppendAllLines($"mslog_err_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { url });
+                }
+            }
+        }
+
+        static void DownloadDirect(string url) {
+            // Step 1 - Direct
+            Log($"Downloading {url} [direct]");
+            if (DownloadFile(url)) {
+                Log("Download completed.");
+                File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { $"d|{url}" });
+                currentList.Remove(url);
+                return;
+            }
+        }
+
+        static void DownloadPattern(string url) {
             // Step 2 - Pattern
             for (int i = 0; i < patterns.Count; i++) {
                 Log($"Downloading {url} [pattern {i}]");
@@ -89,33 +131,31 @@ namespace multiscrape {
                                             .Replace("%q", uri.Query);
                 if (DownloadFile(replacedUrl, url)) {
                     Log("Download completed.");
-                    File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { url });
-                    continue;
+                    File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { $"p{i}|{url}" });
+                    currentList.Remove(url);
+                    return;
                 }
             }
+        }
 
+        static void DownloadWayback(string url) {
             // Step 3 - Wayback
-            if (!skipWayback) {
-                Log($"Downloading {url} [wayback]");
-                string timestamp;
-                string waybackApiResponse = DownloadString($"http://web.archive.org/cdx/search/cdx?fl=statuscode,timestamp&filter=statuscode:[23]{{1}}0[02]&url={HttpUtility.UrlEncode(url)}");
+            Log($"Downloading {url} [wayback]");
+            string timestamp;
+            string waybackApiResponse = DownloadString($"http://web.archive.org/cdx/search/cdx?fl=statuscode,timestamp&filter=statuscode:[23]{{1}}0[02]&url={HttpUtility.UrlEncode(url)}");
 
-                foreach (var line in waybackApiResponse.Split('\n')) {
-                    if (string.IsNullOrWhiteSpace(line))
-                        continue;
-                    timestamp = line.Split(' ')[1];
+            foreach (var line in waybackApiResponse.Split('\n')) {
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+                timestamp = line.Split(' ')[1];
 
-                    if (DownloadFile($"http://web.archive.org/web/{timestamp}id_/{url}", url)) {
-                        Log("Download completed.");
-                        File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { url });
-                        return;
-                    }
+                if (DownloadFile($"http://web.archive.org/web/{timestamp}id_/{url}", url)) {
+                    Log("Download completed.");
+                    File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { $"w|{url}" });
+                    currentList.Remove(url);
+                    return;
                 }
             }
-
-            // Fail
-            Log("Failed to download file via all available methods.");
-            File.AppendAllLines($"mslog_err_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { url });
         }
 
         static string DownloadString(string url) {
@@ -123,6 +163,14 @@ namespace multiscrape {
                 return webClient.DownloadString(url);
             } catch (WebException we) {
                 Log($"API access failed: {we.Message}");
+
+                if (we.Message.Contains("Unable to connect to the remote server") && url.Contains("web.archive.org")) {
+                    Log("Sleeping 60 seconds -> Wayback cooldown");
+                    Thread.Sleep(60000);
+                    Log("Retrying...");
+                    return DownloadString(url);
+                }
+
                 return "";
             }
         }
@@ -137,8 +185,13 @@ namespace multiscrape {
                 origurl = url;
 
             Uri uri = new Uri(HttpUtility.UrlDecode(origurl));
-            string path = uri.Host + String.Concat(uri.Segments.Take(uri.Segments.Length - 1)).Replace("://", "/");
-            string filePath = uri.Host + (dirStruct ? String.Concat(uri.Segments) : uri.Segments.Last()).Replace("://", "/");
+            string path = uri.Host + String.Concat(uri.Segments.Take(uri.Segments.Length - 1)).Replace("://", "/").Replace("%20", " ");
+            string filePath = uri.Host + String.Concat(uri.Segments).Replace("://", "/").Replace("%20", " ");
+
+            while (path.Contains(" /"))
+                path.Replace(" /", "/");
+            while (filePath.Contains(" /"))
+                filePath.Replace(" /", "/");
 
             while (filePath.EndsWith("/") || filePath.EndsWith(".") || filePath.EndsWith("?") || filePath.EndsWith("#") || filePath.EndsWith(" "))
                 filePath = filePath.Substring(0, filePath.Length - 1);
@@ -164,6 +217,13 @@ namespace multiscrape {
 
                 if (File.Exists(filePath + ".dltemp"))
                     File.Delete(filePath + ".dltemp");
+
+                if (we.Message.Contains("Unable to connect to the remote server") && url.Contains("web.archive.org")) {
+                    Log("Sleeping 60 seconds -> Wayback cooldown");
+                    Thread.Sleep(60000);
+                    Log("Retrying...");
+                    return DownloadFile(url, origurl);
+                }
 
                 return false;
             }
