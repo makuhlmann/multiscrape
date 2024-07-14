@@ -233,17 +233,7 @@ namespace multiscrape {
 
             try {
                 webClient.DownloadFile(url, filePath + ".dltemp");
-
-                // If response header contains file name, use that instead
-                string cpString = webClient.ResponseHeaders["Content-Disposition"];
-                if (!string.IsNullOrWhiteSpace(cpString)) {
-                    ContentDisposition contentDisposition = new ContentDisposition(cpString);
-                    string filename = contentDisposition.FileName;
-                    string newfilePath = Path.Combine(Path.GetDirectoryName(filePath), filename);
-                    File.Move(filePath + ".dltemp", newfilePath);
-                } else {
-                    File.Move(filePath + ".dltemp", filePath);
-                }
+                File.Move(filePath + ".dltemp", filePath);
             } catch (WebException we) {
                 Log($"Download failed: {we.Message}");
 
