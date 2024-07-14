@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -116,7 +117,7 @@ namespace multiscrape {
             Log($"Downloading {url} [direct]");
             string filePath = PrepareDownloadDestination(url);
             if (filePath != null && DownloadFile(url, filePath)) {
-                Log("Download completed.");
+                Log($"Download completed, {currentList.Count - 1} files remaining");
                 File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { $"d|{url}" });
                 currentList.Remove(url);
                 return;
@@ -136,7 +137,7 @@ namespace multiscrape {
                 string filePath = PrepareDownloadDestination(url);
 
                 if (filePath != null && DownloadFile(replacedUrl, filePath)) {
-                    Log("Download completed.");
+                    Log($"Download completed, {currentList.Count - 1} files remaining");
                     File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { $"p{i}|{url}" });
                     currentList.Remove(url);
                     return;
@@ -161,7 +162,7 @@ namespace multiscrape {
                 timestamp = line.Split(' ')[1];
 
                 if (DownloadFile($"http://web.archive.org/web/{timestamp}id_/{url}", filePath)) {
-                    Log("Download completed.");
+                    Log($"Download completed, {currentList.Count - 1} files remaining");
                     File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { $"w|{url}" });
                     currentList.Remove(url);
                     return;
@@ -263,23 +264,22 @@ namespace multiscrape {
                     }
 
                     // If response header contains file name, use that instead
-                    IEnumerable<string> headerValues;
-                    if (response.Content.Headers?.TryGetValues("Content-Disposition", out headerValues) ?? false) {
-                        string cpString = headerValues.ToList().FirstOrDefault();
-                        if (!string.IsNullOrWhiteSpace(cpString)) {
-                            ContentDisposition contentDisposition = new ContentDisposition(cpString);
-                            string filename = contentDisposition.FileName;
-                            filePath = Path.Combine(Path.GetDirectoryName(filePath), filename);
-                        }
+                    string filename = response?.Content?.Headers?.ContentDisposition?.FileName;
+                    if (!string.IsNullOrWhiteSpace(filename)) {
+                        filePath = Path.Combine(Path.GetDirectoryName(filePath), filename);
                     }
+
+                    long fileLength = response?.Content?.Headers?.ContentLength ?? 0;
 
                     // by eriksendc - https://github.com/dotnet/runtime/issues/16681#issuecomment-195980023
                     // based on code by TheBlueSky - https://stackoverflow.com/questions/21169573/how-to-implement-progress-reporting-for-portable-httpclient
                     using (Stream contentStream = await response.Content.ReadAsStreamAsync(), fileStream = new FileStream(filePath + ".dltemp", FileMode.Create, FileAccess.Write, FileShare.None, 131072, true)) {
                         var totalRead = 0L;
-                        var totalReads = 0L;
                         var buffer = new byte[131072];
                         var isMoreToRead = true;
+                        long lastRead = 0;
+
+                        Stopwatch s = Stopwatch.StartNew();
 
                         do {
                             var read = await contentStream.ReadAsync(buffer, 0, buffer.Length);
@@ -289,10 +289,14 @@ namespace multiscrape {
                                 await fileStream.WriteAsync(buffer, 0, read);
 
                                 totalRead += read;
-                                totalReads++;
 
-                                if (totalReads % 1000 == 0) {
-                                    Console.WriteLine(string.Format("total bytes downloaded so far: {0:n0} KiB", totalRead / 1024));
+                                if (s.ElapsedMilliseconds > 1000) {
+                                    if (fileLength == 0)
+                                        Console.WriteLine(string.Format("Progress: {0:n0} KiB ({1}%, {2:n0} KiB/s)", totalRead / 1024, "?", (totalRead - lastRead) / 1024));
+                                    else
+                                        Console.WriteLine(string.Format("Progress: {0:n0} KiB ({1}%, {2:n0} KiB/s)", totalRead / 1024, totalRead * 100 / fileLength, (totalRead - lastRead) / 1024));
+                                    lastRead = totalRead;
+                                    s.Restart();
                                 }
                             }
                         }
