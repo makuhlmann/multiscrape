@@ -263,11 +263,14 @@ namespace multiscrape {
                     }
 
                     // If response header contains file name, use that instead
-                    string cpString = response.Content.Headers?.GetValues("Content-Disposition").ToList().FirstOrDefault();
-                    if (!string.IsNullOrWhiteSpace(cpString)) {
-                        ContentDisposition contentDisposition = new ContentDisposition(cpString);
-                        string filename = contentDisposition.FileName;
-                        filePath = Path.Combine(Path.GetDirectoryName(filePath), filename);
+                    IEnumerable<string> headerValues;
+                    if (response.Content.Headers?.TryGetValues("Content-Disposition", out headerValues) ?? false) {
+                        string cpString = headerValues.ToList().FirstOrDefault();
+                        if (!string.IsNullOrWhiteSpace(cpString)) {
+                            ContentDisposition contentDisposition = new ContentDisposition(cpString);
+                            string filename = contentDisposition.FileName;
+                            filePath = Path.Combine(Path.GetDirectoryName(filePath), filename);
+                        }
                     }
 
                     // by eriksendc - https://github.com/dotnet/runtime/issues/16681#issuecomment-195980023
