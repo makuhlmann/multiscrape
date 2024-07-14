@@ -1,19 +1,22 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Security.Policy;
+using System.Net.Http;
+using System.Net.Mime;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Web;
 
 namespace multiscrape {
     internal class Program {
         static bool skipWayback = false;
         static bool skipDirect = false;
-        static readonly bool dirStruct = true;
         static readonly List<string> patterns = new List<string>();
         static readonly WebClient webClient = new WebClient();
+        static readonly HttpClient httpClient = new HttpClient();
         //static string minTimestamp = "19950101120000";
         static readonly string startTime = DateTime.Now.ToString("yyyyMMddhhmmss");
         static string currentFile = "";
@@ -224,9 +227,23 @@ namespace multiscrape {
         }
 
         static bool DownloadFile(string url, string filePath) {
+            if (url.StartsWith("http")) {
+                return DownloadFileHc(url, filePath).Result;
+            }
+
             try {
                 webClient.DownloadFile(url, filePath + ".dltemp");
-                File.Move(filePath + ".dltemp", filePath);
+
+                // If response header contains file name, use that instead
+                string cpString = webClient.ResponseHeaders["Content-Disposition"];
+                if (!string.IsNullOrWhiteSpace(cpString)) {
+                    ContentDisposition contentDisposition = new ContentDisposition(cpString);
+                    string filename = contentDisposition.FileName;
+                    string newfilePath = Path.Combine(Path.GetDirectoryName(filePath), filename);
+                    File.Move(filePath + ".dltemp", newfilePath);
+                } else {
+                    File.Move(filePath + ".dltemp", filePath);
+                }
             } catch (WebException we) {
                 Log($"Download failed: {we.Message}");
 
@@ -243,6 +260,95 @@ namespace multiscrape {
                 return false;
             }
 
+            return true;
+        }
+
+        static async Task<bool> DownloadFileHc(string url, string filePath) {
+            try {
+                DateTime lastModified;
+                using (HttpResponseMessage response = httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).Result) {
+                    if (!response.IsSuccessStatusCode) {
+                        Log($"Download failed: Web server returned status code {(int)response.StatusCode} {response.StatusCode}");
+                        return false;
+                    }
+
+                    // If response header contains file name, use that instead
+                    string cpString = response.Content.Headers?.GetValues("Content-Disposition").ToList().FirstOrDefault();
+                    if (!string.IsNullOrWhiteSpace(cpString)) {
+                        ContentDisposition contentDisposition = new ContentDisposition(cpString);
+                        string filename = contentDisposition.FileName;
+                        filePath = Path.Combine(Path.GetDirectoryName(filePath), filename);
+                    }
+
+                    // by eriksendc - https://github.com/dotnet/runtime/issues/16681#issuecomment-195980023
+                    // based on code by TheBlueSky - https://stackoverflow.com/questions/21169573/how-to-implement-progress-reporting-for-portable-httpclient
+                    using (Stream contentStream = await response.Content.ReadAsStreamAsync(), fileStream = new FileStream(filePath + ".dltemp", FileMode.Create, FileAccess.Write, FileShare.None, 131072, true)) {
+                        var totalRead = 0L;
+                        var totalReads = 0L;
+                        var buffer = new byte[131072];
+                        var isMoreToRead = true;
+
+                        do {
+                            var read = await contentStream.ReadAsync(buffer, 0, buffer.Length);
+                            if (read == 0) {
+                                isMoreToRead = false;
+                            } else {
+                                await fileStream.WriteAsync(buffer, 0, read);
+
+                                totalRead += read;
+                                totalReads++;
+
+                                if (totalReads % 1000 == 0) {
+                                    Console.WriteLine(string.Format("total bytes downloaded so far: {0:n0} KiB", totalRead / 1024));
+                                }
+                            }
+                        }
+                        while (isMoreToRead);
+                    }
+                    lastModified = response.Content.Headers.LastModified != null ? response.Content.Headers.LastModified.Value.UtcDateTime : DateTime.UtcNow;
+                }
+
+                File.Move(filePath + ".dltemp", filePath);
+                File.SetCreationTimeUtc(filePath, lastModified);
+                File.SetLastWriteTimeUtc(filePath,lastModified);
+            } catch (AggregateException e) {
+                string message = "";
+
+                // by Timothy John Laird - https://stackoverflow.com/questions/22872995/flattening-of-aggregateexceptions-for-processing
+                foreach (Exception exInnerException in e.Flatten().InnerExceptions) {
+                    Exception exNestedInnerException = exInnerException;
+                    do {
+                        if (!string.IsNullOrEmpty(exNestedInnerException.Message)) {
+                            message += exNestedInnerException.Message + " -> ";
+                        }
+                        exNestedInnerException = exNestedInnerException.InnerException;
+                    }
+                    while (exNestedInnerException != null);
+                }
+
+                message = message.Substring(0, message.Length - 4);
+
+                Log($"Download failed: {message}");
+
+                if (File.Exists(filePath + ".dltemp"))
+                    File.Delete(filePath + ".dltemp");
+
+                if (message.Contains("the target machine actively refused") && url.Contains("web.archive.org")) {
+                    Log("Sleeping 60 seconds -> Wayback cooldown");
+                    Thread.Sleep(60000);
+                    Log("Retrying...");
+                    return await DownloadFileHc(url, filePath);
+                }
+
+                return false;
+            } catch (Exception e) {
+                Log($"Download failed: {e.Message}");
+
+                if (File.Exists(filePath + ".dltemp"))
+                    File.Delete(filePath + ".dltemp");
+
+                return false;
+            }
             return true;
         }
     }
