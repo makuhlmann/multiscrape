@@ -292,9 +292,9 @@ namespace multiscrape {
 
                                 if (s.ElapsedMilliseconds > 1000) {
                                     if (fileLength == 0)
-                                        Console.WriteLine(string.Format("Progress: {0:n0} KiB ({1}%, {2:n0} KiB/s)", totalRead / 1024, "?", (totalRead - lastRead) / 1024));
+                                        Console.WriteLine(string.Format("Progress: {0:n0} KiB ({1}%, {2:n0} KiB/s)", totalRead / 1024, "?", (totalRead - lastRead) / 1024 / (s.ElapsedMilliseconds / 1000.0)));
                                     else
-                                        Console.WriteLine(string.Format("Progress: {0:n0} KiB ({1}%, {2:n0} KiB/s)", totalRead / 1024, totalRead * 100 / fileLength, (totalRead - lastRead) / 1024));
+                                        Console.WriteLine(string.Format("Progress: {0:n0} KiB ({1}%, {2:n0} KiB/s)", totalRead / 1024, totalRead * 100 / fileLength, (totalRead - lastRead) / 1024 / (s.ElapsedMilliseconds / 1000)));
                                     lastRead = totalRead;
                                     s.Restart();
                                 }
