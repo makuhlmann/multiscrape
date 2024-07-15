@@ -175,8 +175,9 @@ namespace multiscrape {
                 return webClient.DownloadString(url);
             } catch (WebException we) {
                 Log($"API access failed: {we.Message}");
-
-                if (we.Message.Contains("Unable to connect to the remote server") && url.Contains("web.archive.org")) {
+                if (url.Contains("web.archive.org") && (we.Message.Contains("Unable to connect to the remote server") ||
+                                                        we.Message.Contains("Gateway Timeout") ||
+                                                        we.Message.Contains("Bad Gateway"))) {
                     Log("Sleeping 60 seconds -> Wayback cooldown");
                     Thread.Sleep(60000);
                     Log("Retrying...");
@@ -206,7 +207,7 @@ namespace multiscrape {
                 filePath = filePath.Substring(0, filePath.Length - 1);
 
             if (File.Exists(filePath)) {
-                Log("File already downloaded, skipping");
+                Log($"File already downloaded - skipping, {currentList.Count - 1} files remaining");
                 File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { $"x|{origurl}" });
                 currentList.Remove(origurl);
                 return null;
@@ -254,12 +255,22 @@ namespace multiscrape {
             return true;
         }
 
-        static async Task<bool> DownloadFileHc(string url, string filePath) {
+        static async Task<bool> DownloadFileHc(string url, string filePath, bool retry = true) {
             try {
                 DateTime lastModified;
                 using (HttpResponseMessage response = httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).Result) {
                     if (!response.IsSuccessStatusCode) {
                         Log($"Download failed: Web server returned status code {(int)response.StatusCode} {response.StatusCode}");
+                        // One time retry on this error
+                        if ((int)response.StatusCode > 500 && retry && url.Contains("web.archive.org")) {
+                            Log("Retrying in 60 seconds -> Wayback cooldown");
+                            Thread.Sleep(60000);
+                            return await DownloadFileHc(url, filePath);
+                        } else if ((int)response.StatusCode > 500 && retry) {
+                            Log("Retrying in 10 seconds...");
+                            Thread.Sleep(10000);
+                            return await DownloadFileHc(url, filePath, false);
+                        }
                         return false;
                     }
 
@@ -302,7 +313,11 @@ namespace multiscrape {
                         }
                         while (isMoreToRead);
                     }
-                    lastModified = response.Content.Headers.LastModified != null ? response.Content.Headers.LastModified.Value.UtcDateTime : DateTime.UtcNow;
+                    if (response.Headers.TryGetValues("X-Archive-Orig-Last-Modified", out var lxmf) && !string.IsNullOrWhiteSpace(lxmf.FirstOrDefault())) {
+                        lastModified = DateTime.Parse(lxmf.FirstOrDefault());
+                    } else {
+                        lastModified = response.Content.Headers.LastModified != null ? response.Content.Headers.LastModified.Value.UtcDateTime : DateTime.UtcNow;
+                    }
                 }
 
                 File.Move(filePath + ".dltemp", filePath);
@@ -340,6 +355,13 @@ namespace multiscrape {
                 return false;
             } catch (Exception e) {
                 Log($"Download failed: {e.Message}");
+
+                // One time retry on this error
+                if (e.Message.Contains("The connection was closed") && retry) {
+                    Log("Retrying in 10 seconds...");
+                    Thread.Sleep(10000);
+                    return await DownloadFileHc(url, filePath, false);
+                }
 
                 if (File.Exists(filePath + ".dltemp"))
                     File.Delete(filePath + ".dltemp");
