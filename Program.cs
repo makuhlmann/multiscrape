@@ -154,14 +154,14 @@ namespace multiscrape {
             if (filePath == null)
                 return;
 
-            string waybackApiResponse = DownloadString($"http://web.archive.org/cdx/search/cdx?fl=statuscode,timestamp&filter=statuscode:[23]{{1}}0[02]&url={HttpUtility.UrlEncode(url)}");
+            string waybackApiResponse = DownloadString($"https://web.archive.org/cdx/search/cdx?fl=statuscode,timestamp&filter=statuscode:[23]{{1}}0[02]&url={HttpUtility.UrlEncode(url)}");
 
             foreach (var line in waybackApiResponse.Split('\n')) {
                 if (string.IsNullOrWhiteSpace(line))
                     continue;
                 timestamp = line.Split(' ')[1];
 
-                if (DownloadFile($"http://web.archive.org/web/{timestamp}id_/{url}", filePath)) {
+                if (DownloadFile($"https://web.archive.org/web/{timestamp}id_/{url}", filePath)) {
                     Log($"Download completed, {currentList.Count - 1} files remaining");
                     File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { $"w|{url}" });
                     currentList.Remove(url);
