@@ -277,6 +277,7 @@ namespace multiscrape {
                     // If response header contains file name, use that instead
                     string filename = response?.Content?.Headers?.ContentDisposition?.FileName;
                     if (!string.IsNullOrWhiteSpace(filename)) {
+                        filename = string.Concat(filename.Split(Path.GetInvalidFileNameChars()));
                         filePath = Path.Combine(Path.GetDirectoryName(filePath), filename);
                     }
 
