@@ -194,9 +194,9 @@ namespace multiscrape {
         }
 
         static string PrepareDownloadDestination(string origurl) {
-            Uri uri = new Uri(HttpUtility.UrlDecode(origurl));
+            Uri uri = new Uri(origurl);
             string path = uri.Host + String.Concat(uri.Segments.Take(uri.Segments.Length - 1)).Replace("://", "/").Replace("%20", " ");
-            string filePath = uri.Host + String.Concat(uri.Segments).Replace("://", "/").Replace("%20", " ");
+            string filePath = HttpUtility.UrlDecode(uri.Host + String.Concat(uri.Segments).Replace("://", "/").Replace("%20", " "));
 
             while (path.Contains(" /"))
                 path = path.Replace(" /", "/");
@@ -276,9 +276,17 @@ namespace multiscrape {
 
                     // If response header contains file name, use that instead
                     string filename = response?.Content?.Headers?.ContentDisposition?.FileName;
+                    filename = HttpUtility.UrlDecode(response?.Content?.Headers?.ContentDisposition?.FileNameStar);
                     if (!string.IsNullOrWhiteSpace(filename)) {
                         filename = string.Concat(filename.Split(Path.GetInvalidFileNameChars()));
                         filePath = Path.Combine(Path.GetDirectoryName(filePath), filename);
+                    }
+
+                    if (File.Exists(filePath)) {
+                        Log($"File already downloaded - skipping, {currentList.Count - 1} files remaining");
+                        File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { $"x|{url}" });
+                        currentList.Remove(url);
+                        return false; // Prevents duplicate success report
                     }
 
                     long fileLength = response?.Content?.Headers?.ContentLength ?? 0;
