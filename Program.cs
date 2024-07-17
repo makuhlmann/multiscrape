@@ -115,6 +115,7 @@ namespace multiscrape {
         static void DownloadDirect(string url) {
             // Step 1 - Direct
             Log($"Downloading {url} [direct]");
+            Console.Title = $"Downloading {url} [direct]";
             string filePath = PrepareDownloadDestination(url);
             if (filePath != null && DownloadFile(url, filePath)) {
                 Log($"Download completed, {currentList.Count - 1} files remaining");
@@ -128,6 +129,7 @@ namespace multiscrape {
             // Step 2 - Pattern
             for (int i = 0; i < patterns.Count; i++) {
                 Log($"Downloading {url} [pattern {i}]");
+                Console.Title = $"Downloading {url} [pattern {i}]";
                 string pattern = patterns[i];
                 Uri uri = new Uri(url);
                 string replacedUrl = pattern.Replace("%s", uri.Scheme)
@@ -148,6 +150,7 @@ namespace multiscrape {
         static void DownloadWayback(string url) {
             // Step 3 - Wayback
             Log($"Downloading {url} [wayback]");
+            Console.Title = $"Downloading {url} [wayback]";
             string timestamp;
 
             string filePath = PrepareDownloadDestination(url);
