@@ -24,6 +24,8 @@ namespace multiscrape {
         static readonly List<string> downloadLists = new List<string>();
 
         static List<string> currentList = new List<string>();
+        static long curCount = 0;
+        static long totCount = 0;
 
         static void Main(string[] args) {
             for (int i = 0; i < args.Length; i++) {
@@ -62,6 +64,10 @@ namespace multiscrape {
                 currentFile = path;
                 currentList = new List<string>();
                 currentList.AddRange(File.ReadLines(path));
+                foreach (var line in currentList.ToArray()) {
+                    if (line.StartsWith("#") || string.IsNullOrWhiteSpace(line))
+                        currentList.Remove(line);
+                }
                 DownloadList();
             }
         }
@@ -69,9 +75,10 @@ namespace multiscrape {
         static void DownloadList() {
             // Step 1 - Direct
             if (!skipDirect) {
+                curCount = 0;
+                totCount = currentList.Count;
                 foreach (string url in currentList.ToArray()) {
-                    if (url.StartsWith("#") || string.IsNullOrWhiteSpace(url))
-                        continue;
+                    curCount++;
                     if (url.Contains("://"))
                         DownloadDirect(url);
                     else
@@ -81,9 +88,10 @@ namespace multiscrape {
 
             // Step 2 - Pattern
             if (patterns.Count > 0 && currentList.Count > 0) {
+                curCount = 0;
+                totCount = currentList.Count;
                 foreach (string url in currentList.ToArray()) {
-                    if (url.StartsWith("#") || string.IsNullOrWhiteSpace(url))
-                        continue;
+                    curCount++;
                     if (url.Contains("://"))
                         DownloadPattern(url);
                     else
@@ -93,9 +101,10 @@ namespace multiscrape {
 
             // Step 3 - Wayback
             if (!skipWayback && currentList.Count > 0) {
+                curCount = 0;
+                totCount = currentList.Count;
                 foreach (string url in currentList.ToArray()) {
-                    if (url.StartsWith("#") || string.IsNullOrWhiteSpace(url))
-                        continue;
+                    curCount++;
                     if (url.Contains("://"))
                         DownloadWayback(url);
                     else
@@ -115,10 +124,10 @@ namespace multiscrape {
         static void DownloadDirect(string url) {
             // Step 1 - Direct
             Log($"Downloading {url} [direct]");
-            Console.Title = $"Downloading {url} [direct]";
+            Console.Title = $"{curCount}/{totCount} - Downloading {url} [direct]";
             string filePath = PrepareDownloadDestination(url);
             if (filePath != null && DownloadFile(url, filePath)) {
-                Log($"Download completed, {currentList.Count - 1} files remaining");
+                Log($"Download completed, {totCount - curCount}/{totCount} files remaining");
                 File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { $"d|{url}" });
                 currentList.Remove(url);
                 return;
@@ -129,7 +138,7 @@ namespace multiscrape {
             // Step 2 - Pattern
             for (int i = 0; i < patterns.Count; i++) {
                 Log($"Downloading {url} [pattern {i}]");
-                Console.Title = $"Downloading {url} [pattern {i}]";
+                Console.Title = $"{curCount}/{totCount} - Downloading {url} [pattern {i}]";
                 string pattern = patterns[i];
                 Uri uri = new Uri(url);
                 string replacedUrl = pattern.Replace("%s", uri.Scheme)
@@ -139,7 +148,7 @@ namespace multiscrape {
                 string filePath = PrepareDownloadDestination(url);
 
                 if (filePath != null && DownloadFile(replacedUrl, filePath)) {
-                    Log($"Download completed, {currentList.Count - 1} files remaining");
+                    Log($"Download completed, {totCount - curCount}/{totCount} files remaining");
                     File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { $"p{i}|{url}" });
                     currentList.Remove(url);
                     return;
@@ -150,7 +159,7 @@ namespace multiscrape {
         static void DownloadWayback(string url) {
             // Step 3 - Wayback
             Log($"Downloading {url} [wayback]");
-            Console.Title = $"Downloading {url} [wayback]";
+            Console.Title = $"{curCount}/{totCount} - Downloading {url} [wayback]";
             string timestamp;
 
             string filePath = PrepareDownloadDestination(url);
@@ -165,7 +174,7 @@ namespace multiscrape {
                 timestamp = line.Split(' ')[1];
 
                 if (DownloadFile($"https://web.archive.org/web/{timestamp}id_/{url}", filePath)) {
-                    Log($"Download completed, {currentList.Count - 1} files remaining");
+                    Log($"Download completed, {totCount - curCount}/{totCount} files remaining");
                     File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { $"w|{url}" });
                     currentList.Remove(url);
                     return;
@@ -210,7 +219,7 @@ namespace multiscrape {
                 filePath = filePath.Substring(0, filePath.Length - 1);
 
             if (File.Exists(filePath)) {
-                Log($"File already downloaded - skipping, {currentList.Count - 1} files remaining");
+                Log($"File already downloaded - skipping, {totCount - curCount}/{totCount} files remaining");
                 File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { $"x|{origurl}" });
                 currentList.Remove(origurl);
                 return null;
@@ -286,7 +295,7 @@ namespace multiscrape {
                     }
 
                     if (File.Exists(filePath)) {
-                        Log($"File already downloaded - skipping, {currentList.Count - 1} files remaining");
+                        Log($"File already downloaded - skipping, {totCount - curCount}/{totCount} files remaining");
                         File.AppendAllLines($"mslog_ok_{startTime}_{Path.GetFileNameWithoutExtension(currentFile)}.txt", new string[] { $"x|{url}" });
                         currentList.Remove(url);
                         return false; // Prevents duplicate success report
