@@ -207,7 +207,7 @@ namespace multiscrape {
 
         static string PrepareDownloadDestination(string origurl) {
             Uri uri = new Uri(origurl);
-            string path = uri.Host + String.Concat(uri.Segments.Take(uri.Segments.Length - 1)).Replace("://", "/").Replace("%20", " ");
+            string path = HttpUtility.UrlDecode(uri.Host + String.Concat(uri.Segments.Take(uri.Segments.Length - 1)).Replace("://", "/").Replace("%20", " "));
             string filePath = HttpUtility.UrlDecode(uri.Host + String.Concat(uri.Segments).Replace("://", "/").Replace("%20", " "));
 
             while (path.Contains(" /"))
